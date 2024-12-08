@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "997410281463",
+    "project_id": "connectfour-c944c",
+    "storage_bucket": "connectfour-c944c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:997410281463:android:d454ecd0c9ad0b92bf00f2",
+        "android_client_info": {
+          "package_name": "com.example.connectfour"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAa_DgraSsTLVu4-vUQbm6sc_zALmhH5W4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
