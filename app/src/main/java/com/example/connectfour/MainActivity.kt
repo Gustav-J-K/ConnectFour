@@ -3,16 +3,6 @@ package com.example.connectfour
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.connectfour.ui.theme.ConnectFourTheme
-
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,22 +12,92 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.firebase.FirebaseApp
+//import com.google.firebase.database.ktx.database
+import com.google.firebase.ktx.Firebase
 import kotlin.math.min
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        FirebaseApp.initializeApp(this) // Initialize Firebase
         setContent {
-            ConnectFourGame()
+            GameModeSelectionScreen()
         }
     }
 }
 
 const val ROWS = 6
 const val COLUMNS = 7
+
+@Composable
+fun GameModeSelectionScreen() {
+    // State för att hålla koll på vald spelläge
+    var selectedMode by remember { mutableStateOf<String?>(null) }
+
+    if (selectedMode == null) {
+        // Visa val för spelläge
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.LightGray),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Select Game Mode",
+                fontSize = 24.sp,
+                color = Color.Black,
+                modifier = Modifier.padding(16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Play Offline",
+                fontSize = 20.sp,
+                color = Color.Blue,
+                modifier = Modifier
+                    .clickable {
+                        selectedMode = "offline"
+                    }
+                    .padding(16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Play Online",
+                fontSize = 20.sp,
+                color = Color.Blue,
+                modifier = Modifier
+                    .clickable {
+                        selectedMode = "online"
+                    }
+                    .padding(16.dp)
+            )
+        }
+    } else if (selectedMode == "offline") {
+        // Visa offline-spelskärmen
+        ConnectFourGame()
+    } else if (selectedMode == "online") {
+        // Placeholder för online-spelskärm
+        Text(
+            text = "Online mode is under construction!",
+            fontSize = 20.sp,
+            color = Color.Red,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.LightGray)
+                .wrapContentSize(Alignment.Center)
+        )
+    }
+}
+
 
 @Composable
 fun ConnectFourGame() {
@@ -155,14 +215,14 @@ fun checkWin(board: List<IntArray>, player: Int): Boolean {
         }
     }
 
-    // Diagonala (från vänster till höger)
+    // Diagonala(från vänster till höger)
     for (row in 0 until ROWS - 3) {
         for (col in 0 until COLUMNS - 3) {
             if ((0..3).all { board[row + it][col + it] == player }) return true
         }
     }
 
-    // Diagonala (från höger till vänster)
+    // Diagonala(från höger till vänster)
     for (row in 0 until ROWS - 3) {
         for (col in 3 until COLUMNS) {
             if ((0..3).all { board[row + it][col - it] == player }) return true
@@ -171,3 +231,4 @@ fun checkWin(board: List<IntArray>, player: Int): Boolean {
 
     return false
 }
+
