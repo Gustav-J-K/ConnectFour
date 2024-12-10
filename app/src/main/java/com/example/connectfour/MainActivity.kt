@@ -21,12 +21,36 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.ktx.Firebase
 import kotlin.math.min
 
+import com.google.firebase.firestore.ktx.firestore
+//import com.google.firebase.ktx.Firebase
+import com.google.firebase.firestore.FirebaseFirestore
+
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+
+import kotlin.random.Random
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+
+import androidx.navigation.NavController
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+
+
+val db = Firebase.firestore
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         FirebaseApp.initializeApp(this) // Initialize Firebase
         setContent {
-            GameModeSelectionScreen()
+            AppNavigation()
         }
     }
 }
@@ -35,12 +59,33 @@ const val ROWS = 6
 const val COLUMNS = 7
 
 @Composable
-fun GameModeSelectionScreen() {
-    // State för att hålla koll på vald spelläge
+fun AppNavigation() {
+    val navController = rememberNavController()
+
+    NavHost(navController = navController, startDestination = "game_mode_selection") {
+        composable("game_mode_selection") {
+            GameModeSelectionScreen(navController)
+        }
+        composable("offline_game") {
+            ConnectFourOff()
+        }
+        composable("online_game") {
+            OnlineGameOptions(navController)
+        }
+        composable("join_game") {
+            JoinGameScreen()
+        }
+        composable("create_game") {
+            CreateGameScreen()
+        }
+    }
+}
+
+@Composable
+fun GameModeSelectionScreen(navController: NavController) {
     var selectedMode by remember { mutableStateOf<String?>(null) }
 
     if (selectedMode == null) {
-        // Visa val för spelläge
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -64,6 +109,7 @@ fun GameModeSelectionScreen() {
                 modifier = Modifier
                     .clickable {
                         selectedMode = "offline"
+                        navController.navigate("offline_game")
                     }
                     .padding(16.dp)
             )
@@ -77,31 +123,145 @@ fun GameModeSelectionScreen() {
                 modifier = Modifier
                     .clickable {
                         selectedMode = "online"
+                        navController.navigate("online_game")
                     }
                     .padding(16.dp)
             )
         }
-    } else if (selectedMode == "offline") {
-        // Visa offline-spelskärmen
-        ConnectFourGame()
-    } else if (selectedMode == "online") {
-        // Placeholder för online-spelskärm
+    }
+}
+
+@Composable
+fun OnlineGameOptions(navController: NavController) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.LightGray),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Text(
-            text = "Online mode is under construction!",
-            fontSize = 20.sp,
-            color = Color.Red,
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.LightGray)
-                .wrapContentSize(Alignment.Center)
+            text = "Choose an Option",
+            fontSize = 24.sp,
+            color = Color.Black,
+            modifier = Modifier.padding(16.dp)
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = { navController.navigate("create_game") },
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(text = "Create Game")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = { navController.navigate("join_game") },
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(text = "Join Game")
+        }
+    }
+}
+
+@Composable
+fun JoinGameScreen() {
+    var code by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("Enter 4-digit code", style = MaterialTheme.typography.bodyLarge)
+
+        BasicTextField(
+            value = code,
+            onValueChange = { input ->
+                code = input.trim()
+                if (errorMessage.isNotEmpty()) {
+                    errorMessage = ""
+                }
+            },
+            singleLine = true,
+            decorationBox = { innerTextField ->
+                Row(
+                    Modifier
+                        .padding(16.dp)
+                        .background(Color.Gray)
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    innerTextField()
+                }
+            }
+        )
+
+        if (errorMessage.isNotEmpty()) {
+            Text(
+                text = errorMessage,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        Button(
+            onClick = {
+                if (code.length != 4 || code.any { !it.isDigit() }) {
+                    errorMessage = "You must enter exactly 4 digits!"
+                } else {
+                    // Simulate joining the game
+                    println("Joining game with code: $code")
+                }
+            },
+            modifier = Modifier.padding(top = 16.dp)
+        ) {
+            Text("Confirm")
+        }
+    }
+}
+
+fun generateGameCode(): String {
+    return (1000..9999).random().toString()
+}
+
+
+@Composable
+fun CreateGameScreen() {
+    val gameCode = remember { generateGameCode() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Waiting for players...",
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        Text(
+            text = "Code: $gameCode",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.primary
         )
     }
 }
 
 
+
 @Composable
-fun ConnectFourGame() {
-    // Representera spelbrädet: 0 = tom, 1 = spelare 1, 2 = spelare 2
+fun ConnectFourOff() {
     val board = remember { mutableStateListOf(*Array(ROWS) { IntArray(COLUMNS) { 0 } }) }
     var currentPlayer by remember { mutableStateOf(1) }
     var winner by remember { mutableStateOf(0) }
@@ -126,7 +286,6 @@ fun ConnectFourGame() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Spelbräde
         for (row in 0 until ROWS) {
             Row(modifier = Modifier.padding(4.dp)) {
                 for (col in 0 until COLUMNS) {
@@ -134,13 +293,13 @@ fun ConnectFourGame() {
                         value = board[row][col],
                         onClick = {
                             if (winner == 0) {
-                                makeMove(board, col, currentPlayer)?.let {
-                                    if (checkWin(board, currentPlayer)) {
+                                makeMoveOffline(board, col, currentPlayer)?.let {
+                                    if (checkWinOffline(board, currentPlayer)) {
                                         winner = currentPlayer
                                     } else if (board.all { it.all { cell -> cell != 0 } }) {
-                                        winner = -1 // Oavgjort
+                                        winner = -1
                                     } else {
-                                        currentPlayer = 3 - currentPlayer // Växla spelare
+                                        currentPlayer = 3 - currentPlayer
                                     }
                                 }
                             }
@@ -172,6 +331,7 @@ fun ConnectFourGame() {
     }
 }
 
+
 @Composable
 fun Cell(value: Int, onClick: () -> Unit) {
     val color = when (value) {
@@ -190,7 +350,7 @@ fun Cell(value: Int, onClick: () -> Unit) {
     }
 }
 
-fun makeMove(board: MutableList<IntArray>, column: Int, player: Int): Int? {
+fun makeMoveOffline(board: MutableList<IntArray>, column: Int, player: Int): Int? {
     for (row in ROWS - 1 downTo 0) {
         if (board[row][column] == 0) {
             board[row][column] = player
@@ -200,7 +360,7 @@ fun makeMove(board: MutableList<IntArray>, column: Int, player: Int): Int? {
     return null
 }
 
-fun checkWin(board: List<IntArray>, player: Int): Boolean {
+fun checkWinOffline(board: List<IntArray>, player: Int): Boolean {
     // Horisontella
     for (row in 0 until ROWS) {
         for (col in 0 until COLUMNS - 3) {
@@ -231,4 +391,3 @@ fun checkWin(board: List<IntArray>, player: Int): Boolean {
 
     return false
 }
-
