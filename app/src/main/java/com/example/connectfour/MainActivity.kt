@@ -66,8 +66,21 @@ import androidx.compose.material3.OutlinedTextField
 
 import androidx.compose.foundation.border
 
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 
-val db = Firebase.firestore
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -91,7 +104,7 @@ fun AppNavigation() {
             GameModeSelectionScreen(navController)
         }
         composable("offline_game") {
-            ConnectFourOff()
+            ConnectFourOff(navController = navController)
         }
         composable("online_game") {
             OnlineGameOptions(navController)
@@ -105,11 +118,10 @@ fun AppNavigation() {
         }
         composable("game_screen/{gameCode}") { backStackEntry ->
             val gameCode = backStackEntry.arguments?.getString("gameCode") ?: ""
-            GameScreen(gameCode = gameCode)
+            GameScreen(gameCode = gameCode, navController = navController)
         }
     }
 }
-
 
 @Composable
 fun GameModeSelectionScreen(navController: NavController) {
@@ -211,7 +223,6 @@ fun OnlineGameOptions(navController: NavController) {
     }
 }
 
-
 @Composable
 fun JoinGameScreen(navController: NavController) {
     val db = FirebaseFirestore.getInstance()
@@ -282,7 +293,6 @@ fun JoinGameScreen(navController: NavController) {
     }
 }
 
-
 fun joinGame(gameCode: String, db: FirebaseFirestore, onResult: (Boolean, String) -> Unit) {
     val gameRef = db.collection("games").document(gameCode)
 
@@ -312,8 +322,6 @@ fun joinGame(gameCode: String, db: FirebaseFirestore, onResult: (Boolean, String
         onResult(false, "Error fetching game data: ${e.message}")
     }
 }
-
-
 
 fun generateGameCode(): String {
     return (1000..9999).random().toString()
@@ -388,7 +396,6 @@ fun WaitingForPlayer2Screen(navController: NavController, gameCode: String) {
         }
     }
 
-    // Vänteskärm med grå bakgrund och svart text
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -414,45 +421,127 @@ fun WaitingForPlayer2Screen(navController: NavController, gameCode: String) {
     }
 }
 
+class GameViewModel : ViewModel() {
 
-@Composable
-fun GameScreen(gameCode: String) {
-    var board by remember { mutableStateOf(Array(ROWS) { IntArray(COLUMNS) }) }
-    var currentPlayer by remember { mutableStateOf(1) }
-    var winner by remember { mutableStateOf(0) }
+    private val db = FirebaseFirestore.getInstance()
+    private val gameRef = db.collection("games")
 
-    // Ladda speldata och synkronisera brädet från Firestore
-    DisposableEffect(gameCode) {
-        val gameRef = db.collection("games").document(gameCode)
-        val listener = gameRef.addSnapshotListener { snapshot, e ->
-            if (e != null) {
-                Log.e("GameScreen", "Error fetching game data", e)
-                return@addSnapshotListener
-            }
-            if (snapshot != null && snapshot.exists()) {
-                val data = snapshot.data
-                val onlineBoard = data?.get("board") as? List<Long>
-                if (onlineBoard != null) {
-                    // Konvertera platt lista till tvådimensionell array
-                    board = Array(ROWS) { row ->
-                        IntArray(COLUMNS) { col ->
-                            onlineBoard[row * COLUMNS + col].toInt()
-                        }
-                    }
-                } else {
-                    // Hantera fall där brädet inte finns i Firestore
-                    Log.e("GameScreen", "Board data is missing or incorrect")
+    var board: Array<IntArray> = Array(ROWS) { IntArray(COLUMNS) { 0 } }
+    var currentPlayer by mutableStateOf(1)
+    var winner by mutableStateOf(0)
+    var isTurnLocked by mutableStateOf(false)
+
+    fun makeMove(gameCode: String, column: Int) {
+        if (winner != 0 || isTurnLocked) return
+
+        // Find the lowest available row in the column
+        for (row in ROWS - 1 downTo 0) {
+            if (board[row][column] == 0) {
+                board[row][column] = currentPlayer
+                if (checkWinner(board, currentPlayer)) {
+                    winner = currentPlayer
                 }
-                currentPlayer = (data?.get("currentPlayer") as? Long)?.toInt() ?: 1
-                winner = (data?.get("winner") as? Long)?.toInt() ?: 0 // Läs vinnaren
-            } else {
-                Log.e("GameScreen", "Game document is missing or invalid")
+                switchPlayer()
+                updateGameState(gameCode)
+                break
+            }
+        }
+    }
+
+    fun updateGameState(gameCode: String) {
+        val gameDoc = gameRef.document(gameCode)
+
+        // Skapa en map av spelets tillstånd som har rätt typ
+        val gameState: Map<String, Any> = mapOf(
+            "board" to board.map { it.toList() }.flatten(),  // Flatten board korrekt
+            "currentPlayer" to currentPlayer,
+            "winner" to winner,
+            "isTurnLocked" to isTurnLocked
+        )
+
+        // Uppdatera spelets tillstånd i Firestore
+        gameDoc.set(gameState)
+    }
+
+    private fun switchPlayer() {
+        currentPlayer = if (currentPlayer == 1) 2 else 1
+    }
+
+    fun checkWinner(board: Array<IntArray>, player: Int): Boolean {
+        // Kontrollera horisontella rader
+        for (row in 0 until ROWS) {
+            for (col in 0 until COLUMNS - 3) {
+                if (board[row][col] == player && board[row][col + 1] == player && board[row][col + 2] == player && board[row][col + 3] == player) {
+                    return true
+                }
             }
         }
 
-        onDispose { listener?.remove() }
+        // Kontrollera vertikala kolumner
+        for (col in 0 until COLUMNS) {
+            for (row in 0 until ROWS - 3) {
+                if (board[row][col] == player && board[row + 1][col] == player && board[row + 2][col] == player && board[row + 3][col] == player) {
+                    return true
+                }
+            }
+        }
+
+        // Kontrollera diagonala linjer (från vänster till höger)
+        for (row in 0 until ROWS - 3) {
+            for (col in 0 until COLUMNS - 3) {
+                if (board[row][col] == player && board[row + 1][col + 1] == player && board[row + 2][col + 2] == player && board[row + 3][col + 3] == player) {
+                    return true
+                }
+            }
+        }
+
+        // Kontrollera diagonala linjer (från höger till vänster)
+        for (row in 3 until ROWS) {
+            for (col in 0 until COLUMNS - 3) {
+                if (board[row][col] == player && board[row - 1][col + 1] == player && board[row - 2][col + 2] == player && board[row - 3][col + 3] == player) {
+                    return true
+                }
+            }
+        }
+
+        return false
     }
 
+
+    fun syncGameWithFirestore(gameCode: String) {
+        viewModelScope.launch {
+            val gameDoc = gameRef.document(gameCode)
+            gameDoc.addSnapshotListener { snapshot, e ->
+                if (e != null) {
+                    // Hantera eventuella fel här
+                    return@addSnapshotListener
+                }
+                snapshot?.let {
+                    val gameData = snapshot.data
+                    val onlineBoard = gameData?.get("board") as? List<Long>
+                    if (onlineBoard != null) {
+                        // Om brädet är i en annan form, här konverterar vi det till IntArray
+                        board = Array(ROWS) { row ->
+                            IntArray(COLUMNS) { col ->
+                                onlineBoard[row * COLUMNS + col].toInt()
+                            }
+                        }
+                        currentPlayer = (gameData["currentPlayer"] as? Long)?.toInt() ?: 1
+                        winner = (gameData["winner"] as? Long)?.toInt() ?: 0
+                        isTurnLocked = (gameData["isTurnLocked"] as? Boolean) ?: false
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GameScreen(gameCode: String, navController: NavController) {
+    val viewModel: GameViewModel = viewModel()
+
+    // Sync game data with Firestore
+    viewModel.syncGameWithFirestore(gameCode)
 
     Column(
         modifier = Modifier
@@ -462,102 +551,39 @@ fun GameScreen(gameCode: String) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = if (winner == 0) "Player $currentPlayer's turn" else "Player $winner wins!",
+            text = if (viewModel.winner == 0) "Player ${viewModel.currentPlayer}'s turn" else "Player ${viewModel.winner} wins!",
             fontSize = 24.sp
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Vise brädet och gör drag, lås eller lås upp beroende på tur
         for (row in 0 until ROWS) {
             Row {
                 for (col in 0 until COLUMNS) {
-                    Cell(value = board[row][col]) {
-                        if (winner == 0 && board[row][col] == 0) {
-                            makeOnlineMove(gameCode, board.toList(), col, currentPlayer) { newWinner ->
-                                if (newWinner != 0) winner = newWinner
-                                else currentPlayer = 3 - currentPlayer
-                            }
+                    Cell(value = viewModel.board[row][col]) {
+                        if (viewModel.winner == 0 && viewModel.board[row][col] == 0 && !viewModel.isTurnLocked) {
+                            viewModel.makeMove(gameCode, col)
                         }
                     }
                 }
             }
         }
 
-        if (winner != 0) {
+        if (viewModel.winner != 0) {
             Spacer(modifier = Modifier.height(16.dp))
             Button(onClick = {
-                resetGame(gameCode)
-                winner = 0
-                currentPlayer = 1
+                // Navigera tillbaka till GameModeSelectionScreen istället för att återställa spelet
+                navController.navigate("game_mode_selection")
             }) {
-                Text("Restart")
+                Text("Back to Game Mode Selection")
             }
         }
     }
-}
-
-fun makeOnlineMove(
-    gameCode: String,
-    board: List<IntArray>,
-    column: Int,
-    player: Int,
-    onComplete: (Int) -> Unit
-) {
-    for (row in ROWS - 1 downTo 0) {
-        if (board[row][column] == 0) {
-            board[row][column] = player
-            val gameRef = db.collection("games").document(gameCode)
-
-            // Platta ut brädet till en lista av Int-värden
-            val flatBoard = board.flatMap { it.toList() }
-
-
-            val isWin = checkWinOffline(board, player)
-            val winner = if (isWin) player else 0
-
-            // Uppdatera Firestore med den platta listan
-            gameRef.update(
-                "board", flatBoard,
-                "currentPlayer", 3 - player,
-                "winner", winner
-            ).addOnSuccessListener {
-                onComplete(winner)
-            }
-            return
-        }
-    }
-}
-
-
-fun resetGame(gameCode: String) {
-    val emptyBoard = Array(ROWS) { IntArray(COLUMNS) }
-    val gameRef = db.collection("games").document(gameCode)
-    gameRef.set(
-        mapOf(
-            "board" to emptyBoard.map { it.toList() },
-            "currentPlayer" to 1
-        )
-    )
-}
-
-fun switchTurn(gameCode: String, db: FirebaseFirestore) {
-    db.collection("games").document(gameCode)
-        .get()
-        .addOnSuccessListener { snapshot ->
-            val currentPlayer = (snapshot.getLong("currentPlayer") ?: 1).toInt()
-            val nextPlayer = if (currentPlayer == 1) 2 else 1
-            db.collection("games").document(gameCode)
-                .update("currentPlayer", nextPlayer)
-        }
-}
-
-fun updateWinner(gameCode: String, winner: Int, db: FirebaseFirestore) {
-    db.collection("games").document(gameCode)
-        .update("winner", winner)
 }
 
 @Composable
-fun ConnectFourOff() {
+fun ConnectFourOff(navController: NavController) {
     val board = remember { mutableStateListOf(*Array(ROWS) { IntArray(COLUMNS) { 0 } }) }
     var currentPlayer by remember { mutableStateOf(1) }
     var winner by remember { mutableStateOf(0) }
@@ -623,6 +649,15 @@ fun ConnectFourOff() {
                     }
                     .padding(16.dp)
             )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Knappen för att gå tillbaka till GameModeSelection
+        Button(
+            onClick = { navController.navigate("game_mode_selection") },
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text("Back to Game Mode Selection")
         }
     }
 }
